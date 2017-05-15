@@ -1,3 +1,8 @@
+/**
+ * Contains easy to use AMQP structures for easy publish/consume pattern.
+ * @author Chen Weiguang
+*/
+
 #pragma once
 
 #include "SimpleAmqpClient/SimpleAmqpClient.h"

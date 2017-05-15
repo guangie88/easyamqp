@@ -129,6 +129,5 @@ namespace easyamqp
         {
             return Err(make_unique<exception>(e));
         }
-        
     }
 }
