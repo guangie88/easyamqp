@@ -4,12 +4,13 @@
   <PropertyGroup Label="UserMacros">
     <ThirdParty>$(SolutionDir)ThirdParty</ThirdParty>
     <boost>$(ThirdParty)\boost_1_63_0</boost>
+    <msgpack>$(ThirdParty)\msgpack</msgpack>
     <googletest>$(ThirdParty)\googletest</googletest>
     <rustfp>$(ThirdParty)\rustfp</rustfp>
     <SimpleAmqpClient>$(ThirdParty)\SimpleAmqpClient</SimpleAmqpClient>
   </PropertyGroup>
   <PropertyGroup>
-    <IncludePath>$(SolutionDir);$(boost)\include;$(googletest)\include;$(rustfp)\include;$(SimpleAmqpClient)\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir);$(boost)\include;$(googletest)\include;$(msgpack)\include;$(rustfp)\include;$(SimpleAmqpClient)\include;$(IncludePath)</IncludePath>
     <LibraryPath>$(OutDir);$(googletest)\lib\v$(PlatformToolsetVersion)\$(Platform)\$(Configuration);$(SimpleAmqpClient)\lib\v$(PlatformToolsetVersion)\$(Platform)\$(Configuration);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>
@@ -18,6 +19,7 @@
     </Link>
     <ClCompile>
       <PreprocessorDefinitions>FMT_HEADER_ONLY;NOMINMAX;POCO_STATIC;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DisableSpecificWarnings>4996</DisableSpecificWarnings>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -27,6 +29,10 @@
     </BuildMacro>
     <BuildMacro Include="boost">
       <Value>$(boost)</Value>
+      <EnvironmentVariable>true</EnvironmentVariable>
+    </BuildMacro>
+    <BuildMacro Include="msgpack">
+      <Value>$(msgpack)</Value>
       <EnvironmentVariable>true</EnvironmentVariable>
     </BuildMacro>
     <BuildMacro Include="googletest">
