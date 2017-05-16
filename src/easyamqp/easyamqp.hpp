@@ -28,6 +28,9 @@ namespace easyamqp
 
     static constexpr auto DEFAULT_HOSTNAME = "127.0.0.1";
     static constexpr auto DEFAULT_PORT = 5672;
+    static constexpr auto DEFAULT_USERNAME = "guest";
+    static constexpr auto DEFAULT_PASSWORD = "guest";
+    static constexpr auto DEFAULT_VHOST = "/";
 
     /**
      * Acknowledgement enumeration.
@@ -68,7 +71,10 @@ namespace easyamqp
             const std::chrono::milliseconds &consume_timeout = std::chrono::milliseconds(1000),
             const uint32_t thread_count = 1,
             const std::string &hostname = DEFAULT_HOSTNAME,
-            const int port = DEFAULT_PORT);
+            const int port = DEFAULT_PORT,
+            const std::string &username = DEFAULT_USERNAME,
+            const std::string &password = DEFAULT_PASSWORD,
+            const std::string &vhost = DEFAULT_VHOST);
 
         /**
          * Destroys the channel and connection, and gracefully terminate the consumer loop.

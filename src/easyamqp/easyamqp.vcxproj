@@ -70,6 +70,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="ctpl_stl.h" />
     <ClInclude Include="DLL_SETTINGS.h" />
     <ClInclude Include="easyamqp.hpp" />
   </ItemGroup>

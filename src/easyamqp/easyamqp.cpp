@@ -1,5 +1,7 @@
 #include "easyamqp.hpp"
 
+#include "ctpl_stl.h"
+
 #include "rustfp/result.h"
 #include "rustfp/unit.h"
 
@@ -11,16 +13,19 @@
 #include <memory>
 #include <string>
 
-// SimpleAmqpClient
-using AmqpClient::BasicMessage;
-using AmqpClient::Channel;
-using AmqpClient::Envelope;
+// ctpl_stl
+using ctpl::thread_pool;
 
 // rustfp
 using rustfp::Err;
 using rustfp::Ok;
 using rustfp::Result;
 using rustfp::Unit;
+
+// SimpleAmqpClient
+using AmqpClient::BasicMessage;
+using AmqpClient::Channel;
+using AmqpClient::Envelope;
 
 // std
 using std::atomic_bool;
@@ -39,16 +44,20 @@ namespace easyamqp
         const std::chrono::milliseconds &consume_timeout,
         const uint32_t thread_count,
         const std::string &hostname,
-        const int port) :
+        const int port,
+        const std::string &username,
+        const std::string &password,
+        const std::string &vhost) :
 
         queue(queue),
-        c(Channel::Create(hostname, port)),
+        c(Channel::Create(hostname, port, username, password, vhost)),
 
         // to indicate to consumer to stop
         is_running(make_shared<atomic_bool>(true)),
 
         // consumer thread
-        t([consume_fn, consume_timeout, is_running = this->is_running, queue, c = Channel::Create(hostname, port)]
+        t([consume_fn, consume_timeout, queue, thread_count,
+            c = Channel::Create(hostname, port, username, password, vhost), is_running = this->is_running]
         {
             c->DeclareQueue(queue, false, true, false, false);
             const auto consumer_tag = c->BasicConsume(queue, "", true, false);
@@ -56,6 +65,8 @@ namespace easyamqp
             const auto timeout_ms = consume_timeout.count() >= numeric_limits<int32_t>::max()
                 ? numeric_limits<int32_t>::max()
                 : static_cast<int32_t>(consume_timeout.count());
+
+            thread_pool pool(thread_count);
 
             while (is_running->load())
             {
@@ -65,36 +76,41 @@ namespace easyamqp
                 // no message => timeout
                 if (has_msg && is_running->load())
                 {
-                    const auto ack_res =
-                        [&consume_fn, &env]() -> Result<ack, unique_ptr<exception>>
-                        {
-                            try
-                            {
-                                return Ok(consume_fn(env->Message()->Body()));
-                            }
-                            catch (const exception &e)
-                            {
-                                return Err(make_unique<exception>(e));
-                            }
-                        }();
+                    pool.push([c, consume_fn, env](const int id)
+                    {
+                        // wraps a try-catch block to play safe when calling external function
 
-                    ack_res.match(
-                        [&c, &env](const auto &ack)
-                        {
-                            if (ack == ack::ack)
+                        const auto ack_res =
+                            [&consume_fn, &env]() -> Result<ack, unique_ptr<exception>>
                             {
-                                c->BasicAck(env);
-                            }
-                            else
+                                try
+                                {
+                                    return Ok(consume_fn(env->Message()->Body()));
+                                }
+                                catch (const exception &e)
+                                {
+                                    return Err(make_unique<exception>(e));
+                                }
+                            }();
+
+                        ack_res.match(
+                            [&c, &env](const auto &ack)
+                            {
+                                if (ack == ack::ack)
+                                {
+                                    c->BasicAck(env);
+                                }
+                                else
+                                {
+                                    c->BasicReject(env, true);
+                                }
+                            },
+
+                            [&c, &env](const auto &e)
                             {
                                 c->BasicReject(env, true);
-                            }
-                        },
-
-                        [&c, &env](const auto &e)
-                        {
-                            c->BasicReject(env, true);
-                        });
+                            });
+                    });
                 }
             }
         })
