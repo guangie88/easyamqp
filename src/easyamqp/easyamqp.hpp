@@ -64,6 +64,9 @@ namespace easyamqp
          * @param thread_count number of threads permitted to run at the same time to handle the received messages.
          * @param hostname hostname to connect for AMQP service.
          * @param port port number to connect for AMQP service.
+         * @param username username to connect for AMQP service.
+         * @param password password to connect for AMQP service.
+         * @param vhost virtual host path to connect for AMQP service.
          */
         DLL_EASYAMQP dual_channel(
             const std::string &queue,
