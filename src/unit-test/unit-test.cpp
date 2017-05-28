@@ -24,8 +24,7 @@ using std::unordered_map;
 
 static constexpr auto QUEUE_NAME = "c++-queue";
 
-TEST(Main, Text)
-{
+TEST(Main, Text) {
     static constexpr auto TEXT_MSG = "This is a text example.";
     string outer_msg;
 
@@ -45,8 +44,7 @@ TEST(Main, Text)
     EXPECT_EQ(TEXT_MSG, outer_msg);
 }
 
-TEST(Main, Msgpack)
-{
+TEST(Main, Msgpack) {
     static const unordered_map<int, string> NUMBERS
     {
         { 0, "ZERO" }, { 3, "THREE" }, { 7, "SEVEN" },
@@ -77,8 +75,7 @@ TEST(Main, Msgpack)
     EXPECT_EQ("THREE", outer_numbers[3]);
 }
 
-TEST(Main, Nack)
-{
+TEST(Main, Nack) {
     size_t count = 0;
 
     dual_channel dc(QUEUE_NAME, [&count](const string &msg)
@@ -100,8 +97,7 @@ TEST(Main, Nack)
     EXPECT_EQ(5, count);
 }
 
-int main(int argc, char * argv[])
-{
+int main(int argc, char * argv[]) {
     testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
