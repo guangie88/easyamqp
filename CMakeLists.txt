@@ -40,11 +40,10 @@ set(BOOST_SYSTEM_LIB debug ${BOOST_SYSTEM_LIB_DEBUG} optimized ${BOOST_SYSTEM_LI
 set(GTEST_LIB debug ${GTEST_LIB_DEBUG} optimized ${GTEST_LIB_RELEASE})
 
 # project to libraries mapping
-set(PROJ_LIBS_easyamqp SIMPLE_AMQP_CLIENT_LIB BOOST_CHRONO_LIB BOOST_SYSTEM_LIB)
 set(PROJ_LIBS_unit-test SIMPLE_AMQP_CLIENT_LIB BOOST_CHRONO_LIB BOOST_SYSTEM_LIB GTEST_LIB)
 
 # project to locally built libraries mapping
-set(LOCAL_PROJ_LIBS_unit-test easyamqp)
+# set(LOCAL_PROJ_LIBS_unit-test easyamqp)
 
 # general fixed project variables
 set(SRC_ROOT_DIR src)

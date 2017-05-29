@@ -1,5 +1,6 @@
 /**
- * Contains easy to use AMQP structures for easy publish/consume pattern.
+ * Contains easy to use AMQP direct publish/consume functions.
+ * All messages to send and receive are msgpack serializable for convenience.
  * @author Chen Weiguang
 */
 
@@ -7,7 +8,11 @@
 
 #include "SimpleAmqpClient/SimpleAmqpClient.h"
 
+#include "ctpl_stl.h"
+
 #include "mapbox/variant.hpp"
+
+#include "msgpack.hpp"
 
 #include "rustfp/cycle.h"
 #include "rustfp/find_map.h"
@@ -23,12 +28,11 @@
 #include <functional>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <type_traits>
 #include <utility>
-
-#include "DLL_SETTINGS.h"
 
 namespace easyamqp {
 
@@ -42,8 +46,6 @@ namespace easyamqp {
         static constexpr auto DEFAULT_VHOST = "/";
 
         static const std::chrono::milliseconds DEFAULT_DUR(1000);
-
-        DLL_EASYAMQP auto convert_timeout(const std::chrono::milliseconds &timeout) -> int32_t;
     }
 
     /** Acknowledgement enumeration. */
@@ -57,7 +59,7 @@ namespace easyamqp {
 
     /** Consumer function type to be used for direct consuming. */
     template <class T>
-    using consume_fn_t = std::function<::rustfp::Option<T>(std::string)>;
+    using consume_fn_t = std::function<rustfp::Option<T>(std::string)>;
 
     /** Generic error type alias. */
     using err_t = std::unique_ptr<std::exception>;
@@ -81,13 +83,13 @@ namespace easyamqp {
          * Constructor to initialize the error value.
          * @param v variant error value, which can be of timeout_t, or err_t.
          */
-        DLL_EASYAMQP explicit consume_for_error_t(var_err_t &&v);
+        explicit consume_for_error_t(var_err_t &&v);
 
         /**
          * Check if the error is of timeout.
          * @return true if error is of timeout, else false
          */
-        DLL_EASYAMQP auto is_timeout() const -> bool;
+        auto is_timeout() const -> bool;
 
         /**
          * Copy the exception error into another box and returns it.
@@ -97,19 +99,21 @@ namespace easyamqp {
          * type contained is not checked.
          * @return Boxed version of the exception error value.
          */
-        DLL_EASYAMQP auto get_err_unchecked() const -> err_t;
+        auto get_err_unchecked() const -> err_t;
 
     private:
         ::mapbox::util::variant<timeout_t, err_t> v;
     };
-
+    
     /**
-     * Holds the set of publisher and consumer channels.
+     * Holds the lifetime of the given consumer function
+     * to consume in a push style.
      */
-    class dual_channel {
+    template <class T>
+    class subscriber {
     public:
         /** Consumer acknowledgement function type to be used in the consumer loop. */
-        using consume_ack_fn_t = std::function<ack(std::string)>;
+        using consume_ack_fn_t = std::function<ack(T &&)>;
 
         /**
          * Create a set of publisher and consumer channels.
@@ -129,7 +133,7 @@ namespace easyamqp {
          * @param password password to connect for AMQP service.
          * @param vhost virtual host path to connect for AMQP service.
          */
-        DLL_EASYAMQP dual_channel(
+        subscriber(
             const std::string &queue,
             const consume_ack_fn_t &consume_ack_fn,
             const std::chrono::milliseconds &consume_timeout = details::DEFAULT_DUR,
@@ -145,60 +149,12 @@ namespace easyamqp {
          *
          * This immediately prevents the consumer loop from accepting any remaining messages.
          */
-        DLL_EASYAMQP ~dual_channel();
-
-        /**
-         * Publish the given bytes with specified length to the queue.
-         * @param bytes char array of binary data to be sent over.
-         * @param len number of bytes to be sent over.
-         * @return Ok<unit_t> describes no error,
-         * while Err<exception> holds the thrown exception while publishing.
-         */
-        DLL_EASYAMQP auto publish(const char bytes[], const size_t len) noexcept
-            -> ::rustfp::Result<::rustfp::unit_t, err_t>;
-
-        /**
-         * Publish the given string to the queue.
-         * @param msg string content to be sent over.
-         * @return Ok<unit_t> describes no error,
-         * while Err<exception> holds the thrown exception while publishing.
-         */
-        DLL_EASYAMQP auto publish(const std::string &msg) noexcept
-            -> ::rustfp::Result<::rustfp::unit_t, err_t>;
+        ~subscriber();
 
     private:
-        std::string queue;
-        channel_ptr_t c;
         std::shared_ptr<std::atomic_bool> is_running;
         std::thread t;
     };
-
-    /**
-     * Publish the given bytes with specified length to the queue with the given name.
-     *
-     * The created queue will be durable, non-exclusive and does not
-     * get auto-deleted.
-     * @param queue queue name to create
-     * @param bytes char array of binary data to be sent over.
-     * @param len number of bytes to be sent over.
-     * @param hostname hostname to connect for AMQP service.
-     * @param port port number to connect for AMQP service.
-     * @param username username to connect for AMQP service.
-     * @param password password to connect for AMQP service.
-     * @param vhost virtual host path to connect for AMQP service.
-     * @return Ok<unit_t> describes no error,
-     * while Err<exception> holds the thrown exception while publishing.
-     */
-    DLL_EASYAMQP auto publish(
-        const std::string &queue,
-        const char bytes[],
-        const size_t len,
-        const std::string &hostname = details::DEFAULT_HOSTNAME,
-        const int port = details::DEFAULT_PORT,
-        const std::string &username = details::DEFAULT_USERNAME,
-        const std::string &password = details::DEFAULT_PASSWORD,
-        const std::string &vhost = details::DEFAULT_VHOST) noexcept
-        -> ::rustfp::Result<::rustfp::unit_t, err_t>;
 
     /**
      * Publish given message to the queue with the given name.
@@ -206,7 +162,7 @@ namespace easyamqp {
      * The created queue will be durable, non-exclusive and does not
      * get auto-deleted.
      * @param queue queue name to create
-     * @param msg string content to be sent over.
+     * @param value msgpack serializable data to be sent over.
      * @param hostname hostname to connect for AMQP service.
      * @param port port number to connect for AMQP service.
      * @param username username to connect for AMQP service.
@@ -215,17 +171,35 @@ namespace easyamqp {
      * @return Ok<unit_t> describes no error,
      * while Err<exception> holds the thrown exception while publishing.
      */
-    DLL_EASYAMQP auto publish(
+    template <class T>
+    auto publish(
         const std::string &queue,
-        const std::string &msg,
+        const T &value,
         const std::string &hostname = details::DEFAULT_HOSTNAME,
         const int port = details::DEFAULT_PORT,
         const std::string &username = details::DEFAULT_USERNAME,
         const std::string &password = details::DEFAULT_PASSWORD,
         const std::string &vhost = details::DEFAULT_VHOST) noexcept
-        -> ::rustfp::Result<::rustfp::unit_t, err_t>;
+        -> rustfp::Result<rustfp::unit_t, err_t>;
 
-    template <class ConsumeFn>
+    /**
+     * Consumes any given message in the queue, up to the timeout duration.
+     *
+     * The created queue will be durable, non-exclusive and does not
+     * get auto-deleted.
+     * @param queue queue name to create
+     * @param consume_fn consumer function, takes in T and produces any Option.
+     * Returning Some(_) acknowledges the message, while None rejects and requeues the message.
+     * @param consume_timeout consumer wait timeout duration.
+     * @param hostname hostname to connect for AMQP service.
+     * @param port port number to connect for AMQP service.
+     * @param username username to connect for AMQP service.
+     * @param password password to connect for AMQP service.
+     * @param vhost virtual host path to connect for AMQP service.
+     * @return Ok<_> on success,
+     * while Err<consume_for_error_t> holds the variant error value.
+     */
+    template <class T, class ConsumeFn>
     auto consume_for(
         const std::string &queue,
         const ConsumeFn &consume_fn,
@@ -235,9 +209,26 @@ namespace easyamqp {
         const std::string &username = details::DEFAULT_USERNAME,
         const std::string &password = details::DEFAULT_PASSWORD,
         const std::string &vhost = details::DEFAULT_VHOST) noexcept
-        -> ::rustfp::Result<std::result_of_t<ConsumeFn(std::string)>, consume_for_error_t>;
+        -> rustfp::Result<std::result_of_t<ConsumeFn(T &&)>, consume_for_error_t>;
 
-    template <class ConsumeFn>
+    /**
+     * Consumes any given message in the queue, waiting until the message arrives.
+     *
+     * The created queue will be durable, non-exclusive and does not
+     * get auto-deleted.
+     * @param queue queue name to create
+     * @param consume_fn consumer function, takes in T and produces any Option.
+     * Returning Some(_) acknowledges the message, while None rejects and requeues the message.
+     * @param consume_timeout consumer wait timeout duration.
+     * @param hostname hostname to connect for AMQP service.
+     * @param port port number to connect for AMQP service.
+     * @param username username to connect for AMQP service.
+     * @param password password to connect for AMQP service.
+     * @param vhost virtual host path to connect for AMQP service.
+     * @return Ok<_> on success,
+     * while Err<err_t> holds the exception error value.
+     */
+    template <class T, class ConsumeFn>
     auto consume(
         const std::string &queue,
         const ConsumeFn &consume_fn,
@@ -246,11 +237,175 @@ namespace easyamqp {
         const std::string &username = details::DEFAULT_USERNAME,
         const std::string &password = details::DEFAULT_PASSWORD,
         const std::string &vhost = details::DEFAULT_VHOST) noexcept
-        -> ::rustfp::Result<std::result_of_t<ConsumeFn(std::string)>, err_t>;
+        -> rustfp::Result<std::result_of_t<ConsumeFn(T &&)>, err_t>;
 
     // implementation section
 
-    template <class ConsumeFn>
+    namespace details {
+        inline auto convert_timeout(const std::chrono::milliseconds &timeout) -> int32_t {
+            return timeout.count() >= std::numeric_limits<int32_t>::max()
+                ? std::numeric_limits<int32_t>::max()
+                : static_cast<int32_t>(timeout.count());
+        }
+
+        template <class T>
+        auto pack(const T &value) noexcept -> rustfp::Result<std::string, std::unique_ptr<std::exception>> {
+            try {
+                std::stringstream buf;
+                msgpack::pack(buf, value);
+                return rustfp::Ok(buf.str());
+            }
+            catch (const std::exception &e) {
+                return rustfp::Err(std::make_unique<std::exception>(e));
+            }
+        }
+
+        template <class T>
+        auto unpack(const std::string &str) noexcept -> rustfp::Result<T, std::unique_ptr<std::exception>> {
+            static_assert(std::is_default_constructible<T>::value,
+                "unpack<T> must have T that is default constructible!");
+
+            static_assert(std::is_move_constructible<T>::value,
+                "unpack<T> must have T that is move/copy constructible!");
+
+            try {
+                T value;
+
+                const auto handle = msgpack::unpack(str.data(), str.size());
+                const auto deserialized = handle.get();
+                deserialized.convert(value);
+
+                return rustfp::Ok(std::move(value));
+            }
+            catch (const std::exception &e) {
+                return rustfp::Err(std::make_unique<std::exception>(e));
+            }
+        }
+    }
+
+    inline consume_for_error_t::consume_for_error_t(var_err_t &&v) :
+        v(std::move(v)) {
+
+    }
+
+    inline auto consume_for_error_t::is_timeout() const -> bool {
+        return v.is<timeout_t>();
+    }
+
+    inline auto consume_for_error_t::get_err_unchecked() const -> err_t {
+        return std::make_unique<std::exception>(*v.get_unchecked<err_t>());
+    }
+
+    template <class T>
+    subscriber<T>::subscriber(
+        const std::string &queue,
+        const consume_ack_fn_t &consume_ack_fn,
+        const std::chrono::milliseconds &consume_timeout,
+        const uint32_t thread_count,
+        const std::string &hostname,
+        const int port,
+        const std::string &username,
+        const std::string &password,
+        const std::string &vhost) :
+
+        // to indicate to stop
+        is_running(std::make_shared<std::atomic_bool>(true)),
+
+        // looping thread
+        t([consume_ack_fn, consume_timeout, queue, thread_count,
+            c = AmqpClient::Channel::Create(hostname, port, username, password, vhost),
+            is_running = this->is_running] {
+
+            c->DeclareQueue(queue, false, true, false, false);
+            const auto consumer_tag = c->BasicConsume(queue, "", true, false);
+            const auto timeout_ms = details::convert_timeout(consume_timeout);
+
+            ctpl::thread_pool pool(thread_count);
+
+            while (is_running->load()) {
+                AmqpClient::Envelope::ptr_t env = nullptr;
+                const auto has_msg = c->BasicConsumeMessage(consumer_tag, env, timeout_ms);
+
+                // no message => timeout
+                if (has_msg && is_running->load()) {
+                    pool.push([c, consume_ack_fn, env](const int id) {
+                        // wraps a try-catch block to play safe when calling external function
+                        const auto ack_res =
+                            [&consume_ack_fn, &env]() -> rustfp::Result<easyamqp::ack, std::unique_ptr<std::exception>> {
+                                try {
+                                    auto value_res = details::unpack<T>(env->Message()->Body());
+
+                                    return std::move(value_res).match(
+                                        [&consume_ack_fn](T &&value) {
+                                            return rustfp::Ok(consume_ack_fn(std::move(value)));
+                                        },
+                                        [](const auto &) {
+                                            // failed unpacking, auto acknowledge
+                                            return rustfp::Ok(ack::ack);
+                                        });
+                                }
+                                catch (const std::exception &e){
+                                    return rustfp::Err(std::make_unique<std::exception>(e));
+                                }
+                            }();
+
+                        ack_res.match(
+                            [&c, &env](const auto &ack) {
+                                if (ack == ack::ack) {
+                                    c->BasicAck(env);
+                                }
+                                else {
+                                    c->BasicReject(env, true);
+                                }
+                            },
+
+                            [&c, &env](const auto &e) {
+                                c->BasicReject(env, true);
+                            });
+                    });
+                }
+            }
+        }) {
+
+    }
+
+    template <class T>
+    subscriber<T>::~subscriber() {
+        is_running->store(false);
+
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    template <class T>
+    auto publish(
+        const std::string &queue,
+        const T &value,
+        const std::string &hostname,
+        const int port,
+        const std::string &username,
+        const std::string &password,
+        const std::string &vhost) noexcept
+        -> rustfp::Result<rustfp::unit_t, err_t> {
+
+        try {
+            auto c = AmqpClient::Channel::Create(hostname, port, username, password, vhost);
+            auto str_res = details::pack(value);
+
+            return std::move(str_res)
+                .map([&c, &queue](std::string &&str) {
+                    const auto basic_msg = AmqpClient::BasicMessage::Create(str);
+                    c->BasicPublish("", queue, basic_msg);
+                    return rustfp::Unit;
+                });
+        }
+        catch (const std::exception &e) {
+            return rustfp::Err(std::make_unique<std::exception>(e));
+        }
+    }
+
+    template <class T, class ConsumeFn>
     auto consume_for(
         const std::string &queue,
         const ConsumeFn &consume_fn,
@@ -260,7 +415,7 @@ namespace easyamqp {
         const std::string &username,
         const std::string &password,
         const std::string &vhost) noexcept
-        -> ::rustfp::Result<std::result_of_t<ConsumeFn(std::string)>, consume_for_error_t> {
+        -> rustfp::Result<std::result_of_t<ConsumeFn(T &&)>, consume_for_error_t> {
 
         try {
             auto c = AmqpClient::Channel::Create(hostname, port, username, password, vhost);
@@ -272,26 +427,34 @@ namespace easyamqp {
             const auto has_msg = c->BasicConsumeMessage(consumer_tag, env, timeout_ms);
 
             if (has_msg) {
-                auto consume_opt = consume_fn(env->Message()->Body());
+                auto value_res = details::unpack<T>(env->Message()->Body());
 
-                if (consume_opt.is_some()) {
-                    c->BasicAck(env);
-                }
-                else {
-                    c->BasicReject(env, true);
-                }
+                return std::move(value_res)
+                    .map([&c, &consume_fn, &env](T &&value) {
+                        auto consume_opt = consume_fn(std::move(value));
 
-                return ::rustfp::Ok(std::move(consume_opt));
+                        if (consume_opt.is_some()) {
+                            c->BasicAck(env);
+                        }
+                        else {
+                            c->BasicReject(env, true);
+                        }
+
+                        return std::move(consume_opt);
+                    })
+                    .map_err([](err_t &&e) {
+                        return consume_for_error_t{std::move(e)};
+                    });
             } else {
-                return ::rustfp::Err(consume_for_error_t{timeout_t{}});
+                return rustfp::Err(consume_for_error_t{timeout_t{}});
             }
         }
         catch (const std::exception &e) {
-            return ::rustfp::Err(consume_for_error_t(std::make_unique<std::exception>(e)));
+            return rustfp::Err(consume_for_error_t(std::make_unique<std::exception>(e)));
         }
     }
 
-    template <class ConsumeFn>
+    template <class T, class ConsumeFn>
     auto consume(
         const std::string &queue,
         const ConsumeFn &consume_fn,
@@ -300,29 +463,29 @@ namespace easyamqp {
         const std::string &username,
         const std::string &password,
         const std::string &vhost) noexcept
-        -> ::rustfp::Result<std::result_of_t<ConsumeFn(std::string)>, err_t> {
+        -> rustfp::Result<std::result_of_t<ConsumeFn(T &&)>, err_t> {
 
-        using opt_t = std::result_of_t<ConsumeFn(std::string)>;
-        using res_t = ::rustfp::Result<opt_t, err_t>;
+        using opt_t = std::result_of_t<ConsumeFn(T &&)>;
+        using res_t = rustfp::Result<opt_t, err_t>;
 
-        auto consume_res_opt = ::rustfp::cycle(::rustfp::Unit)
-            | ::rustfp::find_map([&queue, &consume_fn, &hostname, port,
-                &username, &password, &vhost](::rustfp::unit_t) -> ::rustfp::Option<res_t> {
+        auto consume_res_opt = rustfp::cycle(rustfp::Unit)
+            | rustfp::find_map([&queue, &consume_fn, &hostname, port,
+                &username, &password, &vhost](rustfp::unit_t) -> rustfp::Option<res_t> {
                 
-                auto res = consume_for(queue, consume_fn, details::DEFAULT_DUR, hostname,
+                auto res = consume_for<T>(queue, consume_fn, details::DEFAULT_DUR, hostname,
                     port, username, password, vhost);
 
                 return std::move(res).match(
                     [](opt_t &&v) {
-                        return ::rustfp::Some(res_t(::rustfp::Ok(std::move(v))));
+                        return rustfp::Some(res_t(rustfp::Ok(std::move(v))));
                     },
 
-                    [](consume_for_error_t &&e) -> ::rustfp::Option<res_t> {
+                    [](consume_for_error_t &&e) -> rustfp::Option<res_t> {
                         if (e.is_timeout()) {
-                            return ::rustfp::None;
+                            return rustfp::None;
                         }
                         else {
-                            return ::rustfp::Some(res_t(::rustfp::Err(e.get_err_unchecked())));
+                            return rustfp::Some(res_t(rustfp::Err(e.get_err_unchecked())));
                         }
                     });
             });
