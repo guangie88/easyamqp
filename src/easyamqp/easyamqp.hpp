@@ -311,6 +311,12 @@ namespace easyamqp {
             is_running = this->is_running] {
 
             // derive the msgpack type
+            // MSVC has bug, so need to use decltype since ConsumeAckFn is
+            // apparently 'not captured'
+#ifdef _WIN32
+            using ConsumeAckFn = decltype(consume_ack_fn);
+#endif
+
             using traits = typename misc::fn_traits<ConsumeAckFn>;
             using arg0_t = typename traits::template arg_t<0>;
             using T = std::remove_const_t<std::remove_reference_t<arg0_t>>;

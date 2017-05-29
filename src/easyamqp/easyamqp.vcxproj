@@ -71,8 +71,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ctpl_stl.h" />
-    <ClInclude Include="DLL_SETTINGS.h" />
     <ClInclude Include="easyamqp.hpp" />
+    <ClInclude Include="fn_traits.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
