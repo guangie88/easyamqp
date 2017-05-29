@@ -72,7 +72,7 @@ namespace easyamqp {
     }
 
     auto consume_for_error_t::get_err_unchecked() const -> err_t {
-        // return make_unique<exception>(*v.get_unchecked<err_t>());
+        return make_unique<exception>(*v.get_unchecked<err_t>());
     }
 
     dual_channel::dual_channel(
