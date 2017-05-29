@@ -6,9 +6,10 @@
 
 #pragma once
 
-#include "SimpleAmqpClient/SimpleAmqpClient.h"
-
 #include "ctpl_stl.h"
+#include "fn_traits.hpp"
+
+#include "SimpleAmqpClient/SimpleAmqpClient.h"
 
 #include "mapbox/variant.hpp"
 
@@ -56,10 +57,6 @@ namespace easyamqp {
         /** Reject acknowledging the message. */
         rej,
     };
-
-    /** Consumer function type to be used for direct consuming. */
-    template <class T>
-    using consume_fn_t = std::function<rustfp::Option<T>(std::string)>;
 
     /** Generic error type alias. */
     using err_t = std::unique_ptr<std::exception>;
@@ -109,20 +106,16 @@ namespace easyamqp {
      * Holds the lifetime of the given consumer function
      * to consume in a push style.
      */
-    template <class T>
     class subscriber {
     public:
-        /** Consumer acknowledgement function type to be used in the consumer loop. */
-        using consume_ack_fn_t = std::function<ack(T &&)>;
-
         /**
          * Create a set of publisher and consumer channels.
          *
          * The created queue will be durable, non-exclusive and does not
          * get auto-deleted.
          * @param queue queue name to create
-         * @param consume_ack_fn consumer function that handles the received message
-         * when available in queue.
+         * @param consume_ack_fn consumer function that handles the deserialized value
+         * when available in queue, and returns ack.
          * @param consume_timeout consume wait timeout duration before
          * performing another blocking wait.
          * @param thread_count number of threads permitted to run at the same time
@@ -133,9 +126,10 @@ namespace easyamqp {
          * @param password password to connect for AMQP service.
          * @param vhost virtual host path to connect for AMQP service.
          */
+        template <class ConsumeAckFn>
         subscriber(
             const std::string &queue,
-            const consume_ack_fn_t &consume_ack_fn,
+            const ConsumeAckFn &consume_ack_fn,
             const std::chrono::milliseconds &consume_timeout = details::DEFAULT_DUR,
             const uint32_t thread_count = 1,
             const std::string &hostname = details::DEFAULT_HOSTNAME,
@@ -296,10 +290,10 @@ namespace easyamqp {
         return std::make_unique<std::exception>(*v.get_unchecked<err_t>());
     }
 
-    template <class T>
-    subscriber<T>::subscriber(
+    template <class ConsumeAckFn>
+    subscriber::subscriber(
         const std::string &queue,
-        const consume_ack_fn_t &consume_ack_fn,
+        const ConsumeAckFn &consume_ack_fn,
         const std::chrono::milliseconds &consume_timeout,
         const uint32_t thread_count,
         const std::string &hostname,
@@ -315,6 +309,11 @@ namespace easyamqp {
         t([consume_ack_fn, consume_timeout, queue, thread_count,
             c = AmqpClient::Channel::Create(hostname, port, username, password, vhost),
             is_running = this->is_running] {
+
+            // derive the msgpack type
+            using traits = typename misc::fn_traits<ConsumeAckFn>;
+            using arg0_t = typename traits::template arg_t<0>;
+            using T = std::remove_const_t<std::remove_reference_t<arg0_t>>;
 
             c->DeclareQueue(queue, false, true, false, false);
             const auto consumer_tag = c->BasicConsume(queue, "", true, false);
@@ -369,8 +368,7 @@ namespace easyamqp {
 
     }
 
-    template <class T>
-    subscriber<T>::~subscriber() {
+    inline subscriber::~subscriber() {
         is_running->store(false);
 
         if (t.joinable()) {

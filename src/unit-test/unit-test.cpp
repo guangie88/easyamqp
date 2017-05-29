@@ -11,6 +11,7 @@
 #include <thread>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 // easyamqp
 using easyamqp::ack;
@@ -31,31 +32,16 @@ using std::string;
 using std::stringstream;
 using std::this_thread::sleep_for;
 using std::unordered_map;
+using std::vector;
 
-// template <class T>
-// auto msgpack_to_str(const T &ser) -> string {
-//     stringstream buf;
-//     msgpack::pack(buf, ser);
-//     return buf.str();
-// }
+TEST(EasyAmqp, SubscriberText) {
+    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-text";
 
-// template <class T>
-// auto str_to_msgpack(const string &msg) -> T {
-//     T value;
-    
-//     const auto handle = msgpack::unpack(msg.data(), msg.length());
-//     const auto deserialized = handle.get();
-//     deserialized.convert(value);
-
-//     return move(value);
-// }
-
-TEST(EasyAmqp, DualChannelText) {
-    static constexpr auto QUEUE_NAME = "easyamqp-dual-channel-text";
-    static const string TEXT_MSG = "This is a text example.";
+    // char array and string will serialize into the same thing
+    static constexpr auto TEXT_MSG = "This is a text example.";
     string outer_msg;
 
-    subscriber<string> sub(QUEUE_NAME, [&outer_msg](const string &value) {
+    subscriber sub(QUEUE_NAME, [&outer_msg](const string &value) {
         outer_msg = value;
         return ack::ack;
     });
@@ -70,8 +56,8 @@ TEST(EasyAmqp, DualChannelText) {
     EXPECT_EQ(TEXT_MSG, outer_msg);
 }
 
-TEST(EasyAmqp, DualChannelMsgpack) {
-    static constexpr auto QUEUE_NAME = "easyamqp-dual-channel-msgpack";
+TEST(EasyAmqp, SubscriberMsgpack) {
+    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-msgpack";
 
     static const unordered_map<int, string> NUMBERS {
         { 0, "ZERO" }, { 3, "THREE" }, { 7, "SEVEN" },
@@ -79,7 +65,7 @@ TEST(EasyAmqp, DualChannelMsgpack) {
 
     unordered_map<int, string> outer_numbers;
 
-    subscriber<unordered_map<int, string>> sub(QUEUE_NAME, [&outer_numbers](const unordered_map<int, string> &value) {
+    subscriber sub(QUEUE_NAME, [&outer_numbers](const unordered_map<int, string> &value) {
         outer_numbers = value;
         return ack::ack;
     });
@@ -96,11 +82,11 @@ TEST(EasyAmqp, DualChannelMsgpack) {
     EXPECT_EQ("THREE", outer_numbers[3]);
 }
 
-TEST(EasyAmqp, DualChannelNack) {
-    static constexpr auto QUEUE_NAME = "easyamqp-dual-channel-nack";
+TEST(EasyAmqp, SubscriberNack) {
+    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-nack";
     size_t count = 0;
 
-    subscriber<string> sub(QUEUE_NAME, [&count](const string &value) {
+    subscriber sub(QUEUE_NAME, [&count](const string &value) {
         ++count;
 
         return count == 5
@@ -116,6 +102,36 @@ TEST(EasyAmqp, DualChannelNack) {
     sleep_for(milliseconds(250));
 
     EXPECT_EQ(5, count);
+}
+
+TEST(EasyAmqp, SubscriberMsgpackFail) {
+    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-msgpack-fail";
+    size_t count = 0;
+
+    // failing unpacking on the same queue name
+    // will sliently drop the messages
+    subscriber sub_fail(QUEUE_NAME, [&count](const string &value) {
+        ++count;
+        return ack::ack;
+    });
+
+    // fail
+    publish(QUEUE_NAME, 3.14);
+    publish(QUEUE_NAME, vector<int>{});
+
+    // can unpack
+    publish(QUEUE_NAME, "Hello");
+
+    // fail again
+    publish(QUEUE_NAME, 777);
+    publish(QUEUE_NAME, false);
+
+    // can unpack again
+    publish(QUEUE_NAME, "World");
+
+    sleep_for(milliseconds(250));
+
+    EXPECT_EQ(2, count);
 }
 
 TEST(EasyAmqp, ConsumeForFail) {
