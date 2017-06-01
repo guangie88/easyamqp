@@ -47,6 +47,15 @@ namespace easyamqp {
         static constexpr auto DEFAULT_VHOST = "/";
 
         static const std::chrono::milliseconds DEFAULT_DUR(1000);
+
+        /** To get the first argument type of a non-overloaded function. */
+        template <class Fn>
+        using arg0_t = std::remove_cv_t<std::remove_reference_t<
+            typename misc::fn_traits<std::remove_cv_t<std::remove_reference_t<Fn>>>::template arg_t<0>>>;
+
+        /** To get the result type of a non-overloaded function. */
+        template <class Fn>
+        using result_t = typename misc::fn_traits<std::remove_cv_t<std::remove_reference_t<Fn>>>::return_t;
     }
 
     /** Acknowledgement enumeration. */
@@ -182,7 +191,7 @@ namespace easyamqp {
      * The created queue will be durable, non-exclusive and does not
      * get auto-deleted.
      * @param queue queue name to create
-     * @param consume_fn consumer function, takes in T and produces any Option.
+     * @param consume_fn consumer function, takes in msgpack serializable value and produces any Option.
      * Returning Some(_) acknowledges the message, while None rejects and requeues the message.
      * @param consume_timeout consumer wait timeout duration.
      * @param hostname hostname to connect for AMQP service.
@@ -193,7 +202,7 @@ namespace easyamqp {
      * @return Ok<_> on success,
      * while Err<consume_for_error_t> holds the variant error value.
      */
-    template <class T, class ConsumeFn>
+    template <class ConsumeFn>
     auto consume_for(
         const std::string &queue,
         const ConsumeFn &consume_fn,
@@ -203,7 +212,7 @@ namespace easyamqp {
         const std::string &username = details::DEFAULT_USERNAME,
         const std::string &password = details::DEFAULT_PASSWORD,
         const std::string &vhost = details::DEFAULT_VHOST) noexcept
-        -> rustfp::Result<std::result_of_t<ConsumeFn(T &&)>, consume_for_error_t>;
+        -> rustfp::Result<details::result_t<ConsumeFn>, consume_for_error_t>;
 
     /**
      * Consumes any given message in the queue, waiting until the message arrives.
@@ -211,7 +220,7 @@ namespace easyamqp {
      * The created queue will be durable, non-exclusive and does not
      * get auto-deleted.
      * @param queue queue name to create
-     * @param consume_fn consumer function, takes in T and produces any Option.
+     * @param consume_fn consumer function, takes in msgpack serializable value and produces any Option.
      * Returning Some(_) acknowledges the message, while None rejects and requeues the message.
      * @param consume_timeout consumer wait timeout duration.
      * @param hostname hostname to connect for AMQP service.
@@ -222,7 +231,7 @@ namespace easyamqp {
      * @return Ok<_> on success,
      * while Err<err_t> holds the exception error value.
      */
-    template <class T, class ConsumeFn>
+    template <class ConsumeFn>
     auto consume(
         const std::string &queue,
         const ConsumeFn &consume_fn,
@@ -231,7 +240,7 @@ namespace easyamqp {
         const std::string &username = details::DEFAULT_USERNAME,
         const std::string &password = details::DEFAULT_PASSWORD,
         const std::string &vhost = details::DEFAULT_VHOST) noexcept
-        -> rustfp::Result<std::result_of_t<ConsumeFn(T &&)>, err_t>;
+        -> rustfp::Result<details::result_t<ConsumeFn>, err_t>;
 
     // implementation section
 
@@ -317,9 +326,7 @@ namespace easyamqp {
             using ConsumeAckFn = decltype(consume_ack_fn);
 #endif
 
-            using traits = typename misc::fn_traits<ConsumeAckFn>;
-            using arg0_t = typename traits::template arg_t<0>;
-            using T = std::remove_const_t<std::remove_reference_t<arg0_t>>;
+            using T = details::arg0_t<ConsumeAckFn>;
 
             c->DeclareQueue(queue, false, true, false, false);
             const auto consumer_tag = c->BasicConsume(queue, "", true, false);
@@ -409,7 +416,7 @@ namespace easyamqp {
         }
     }
 
-    template <class T, class ConsumeFn>
+    template <class ConsumeFn>
     auto consume_for(
         const std::string &queue,
         const ConsumeFn &consume_fn,
@@ -419,7 +426,9 @@ namespace easyamqp {
         const std::string &username,
         const std::string &password,
         const std::string &vhost) noexcept
-        -> rustfp::Result<std::result_of_t<ConsumeFn(T &&)>, consume_for_error_t> {
+        -> rustfp::Result<details::result_t<ConsumeFn>, consume_for_error_t> {
+
+        using T = details::arg0_t<ConsumeFn>;
 
         try {
             auto c = AmqpClient::Channel::Create(hostname, port, username, password, vhost);
@@ -458,7 +467,7 @@ namespace easyamqp {
         }
     }
 
-    template <class T, class ConsumeFn>
+    template <class ConsumeFn>
     auto consume(
         const std::string &queue,
         const ConsumeFn &consume_fn,
@@ -467,16 +476,16 @@ namespace easyamqp {
         const std::string &username,
         const std::string &password,
         const std::string &vhost) noexcept
-        -> rustfp::Result<std::result_of_t<ConsumeFn(T &&)>, err_t> {
+        -> rustfp::Result<details::result_t<ConsumeFn>, err_t> {
 
-        using opt_t = std::result_of_t<ConsumeFn(T &&)>;
+        using opt_t = details::result_t<ConsumeFn>;
         using res_t = rustfp::Result<opt_t, err_t>;
 
         auto consume_res_opt = rustfp::cycle(rustfp::Unit)
             | rustfp::find_map([&queue, &consume_fn, &hostname, port,
                 &username, &password, &vhost](rustfp::unit_t) -> rustfp::Option<res_t> {
                 
-                auto res = consume_for<T>(queue, consume_fn, details::DEFAULT_DUR, hostname,
+                auto res = consume_for(queue, consume_fn, details::DEFAULT_DUR, hostname,
                     port, username, password, vhost);
 
                 return std::move(res).match(

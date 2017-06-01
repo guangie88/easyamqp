@@ -6,6 +6,8 @@
 
 #include <cstddef>
 #include <chrono>
+#include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -27,12 +29,48 @@ using rustfp::Some;
 
 // std
 using std::chrono::milliseconds;
+using std::lock_guard;
 using std::move;
+using std::make_shared;
+using std::make_unique;
+using std::mutex;
+using std::pair;
+using std::shared_ptr;
 using std::string;
 using std::stringstream;
 using std::this_thread::sleep_for;
+using std::unique_ptr;
 using std::unordered_map;
 using std::vector;
+
+class foo {
+public:
+    template <class BeginIt, class EndIt>
+    foo(const BeginIt &begin_it, const EndIt &end_it) :
+        values_ptr(make_shared<pair<unique_ptr<mutex>, vector<int>>>(make_unique<mutex>(), vector<int>{begin_it, end_it})) {
+
+    }
+
+    // must be const and have to use mutable with Arc + Mutex
+    auto operator()(const vector<int> &values) const -> ack {
+        lock_guard<mutex> lock(*values_ptr->first);
+        auto &this_values = values_ptr->second;
+
+        this_values.insert(
+            this_values.cend(),
+            values.cbegin(),
+            values.cend());
+
+        return ack::ack;
+    }
+
+    auto get() const -> vector<int> {
+        return values_ptr->second;
+    }
+
+private:
+    mutable shared_ptr<pair<unique_ptr<mutex>, vector<int>>> values_ptr;
+};
 
 TEST(EasyAmqp, SubscriberText) {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-text";
@@ -56,8 +94,8 @@ TEST(EasyAmqp, SubscriberText) {
     EXPECT_EQ(TEXT_MSG, outer_msg);
 }
 
-TEST(EasyAmqp, SubscriberMsgpack) {
-    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-msgpack";
+TEST(EasyAmqp, SubscriberComplexMsgpack) {
+    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-complex-msgpack";
 
     static const unordered_map<int, string> NUMBERS {
         { 0, "ZERO" }, { 3, "THREE" }, { 7, "SEVEN" },
@@ -80,6 +118,26 @@ TEST(EasyAmqp, SubscriberMsgpack) {
     EXPECT_EQ("SEVEN", outer_numbers[7]);
     EXPECT_EQ("ZERO", outer_numbers[0]);
     EXPECT_EQ("THREE", outer_numbers[3]);
+}
+
+TEST(EasyAmqp, SubscriberFunctor) {
+    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-functor";
+    static const vector<int> NUMBERS {1, 3, 5, 7};
+    
+    {
+        // direct invocation of functor
+        // just to test the syntax
+        subscriber sub(QUEUE_NAME, foo{NUMBERS.cbegin(), NUMBERS.cend()});
+    }
+
+    auto f = foo{NUMBERS.cbegin(), NUMBERS.cend()};
+    EXPECT_EQ(4, f.get().size());
+    
+    subscriber sub(QUEUE_NAME, f);
+    publish(QUEUE_NAME, NUMBERS);
+
+    sleep_for(milliseconds(250));
+    EXPECT_EQ(8, f.get().size());
 }
 
 TEST(EasyAmqp, SubscriberNack) {
@@ -135,7 +193,7 @@ TEST(EasyAmqp, SubscriberMsgpackFail) {
 }
 
 TEST(EasyAmqp, ConsumeForFail) {
-    const auto res = consume_for<string>("easyamqp-consume-for-fail",
+    const auto res = consume_for("easyamqp-consume-for-fail",
         [](string &&value) { return Some(move(value)); });
 
     EXPECT_TRUE(res.is_err());
@@ -149,14 +207,14 @@ TEST(EasyAmqp, PublishConsume) {
     EXPECT_TRUE(pub_res.is_ok());
 
     // reject acknowledgement
-    const auto con_res1 = consume<double>(QUEUE_NAME,
+    const auto con_res1 = consume(QUEUE_NAME,
         [](const double value) -> Option<string> { return None; });
 
     EXPECT_TRUE(con_res1.is_ok());
     EXPECT_TRUE(con_res1.get_unchecked().is_none());
 
     // accept acknowledgement
-    const auto con_res2 = consume<double>(QUEUE_NAME,
+    const auto con_res2 = consume(QUEUE_NAME,
         [](const double value) { return Some(value); });
 
     EXPECT_TRUE(con_res2.is_ok());
@@ -164,7 +222,7 @@ TEST(EasyAmqp, PublishConsume) {
     EXPECT_EQ(3.14, con_res2.get_unchecked().get_unchecked());
 
     // confirm the queue is empty
-    const auto con_for_res = consume_for<double>(QUEUE_NAME,
+    const auto con_for_res = consume_for(QUEUE_NAME,
         [](const double value) { return Some(value); });
 
     EXPECT_TRUE(con_for_res.is_err());
