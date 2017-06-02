@@ -58,6 +58,31 @@ namespace easyamqp {
         using result_t = typename misc::fn_traits<std::remove_cv_t<std::remove_reference_t<Fn>>>::return_t;
     }
 
+    /**
+     * Groups all the fields required for connection into a structure.
+     */
+    struct connection_info {
+        /** Hostname of the AMQP server. */
+        std::string hostname = details::DEFAULT_HOSTNAME;
+
+        /** Port number of the AMQP server. */
+        int port = details::DEFAULT_PORT;
+
+        /** Username for connection login. */
+        std::string username = details::DEFAULT_USERNAME;
+
+        /** Password for connection login. */
+        std::string password = details::DEFAULT_PASSWORD;
+
+        /** Virtual host of the AMQP exchange. */
+        std::string vhost = details::DEFAULT_VHOST;
+    };
+    
+    namespace details {
+        /** Default connection information */
+        static const auto DEFAULT_CONN = connection_info{};
+    }
+
     /** Acknowledgement enumeration. */
     enum class ack {
         /** Acknowledge the message. */
@@ -110,7 +135,7 @@ namespace easyamqp {
     private:
         ::mapbox::util::variant<timeout_t, err_t> v;
     };
-    
+
     /**
      * Holds the lifetime of the given consumer function
      * to consume in a push style.
@@ -125,27 +150,19 @@ namespace easyamqp {
          * @param queue queue name to create
          * @param consume_ack_fn consumer function that handles the deserialized value
          * when available in queue, and returns ack.
+         * @param conn_info structure containing fields required for AMQP connection.
          * @param consume_timeout consume wait timeout duration before
          * performing another blocking wait.
          * @param thread_count number of threads permitted to run at the same time
          * to handle the received messages.
-         * @param hostname hostname to connect for AMQP service.
-         * @param port port number to connect for AMQP service.
-         * @param username username to connect for AMQP service.
-         * @param password password to connect for AMQP service.
-         * @param vhost virtual host path to connect for AMQP service.
          */
         template <class ConsumeAckFn>
         subscriber(
             const std::string &queue,
             const ConsumeAckFn &consume_ack_fn,
+            const connection_info &conn_info = details::DEFAULT_CONN,
             const std::chrono::milliseconds &consume_timeout = details::DEFAULT_DUR,
-            const uint32_t thread_count = 1,
-            const std::string &hostname = details::DEFAULT_HOSTNAME,
-            const int port = details::DEFAULT_PORT,
-            const std::string &username = details::DEFAULT_USERNAME,
-            const std::string &password = details::DEFAULT_PASSWORD,
-            const std::string &vhost = details::DEFAULT_VHOST);
+            const uint32_t thread_count = 1);
 
         /**
          * Destroy the channel and connection, and gracefully terminate the consumer loop.
@@ -166,11 +183,7 @@ namespace easyamqp {
      * get auto-deleted.
      * @param queue queue name to create
      * @param value msgpack serializable data to be sent over.
-     * @param hostname hostname to connect for AMQP service.
-     * @param port port number to connect for AMQP service.
-     * @param username username to connect for AMQP service.
-     * @param password password to connect for AMQP service.
-     * @param vhost virtual host path to connect for AMQP service.
+     * @param conn_info structure containing fields required for AMQP connection.
      * @return Ok<unit_t> describes no error,
      * while Err<exception> holds the thrown exception while publishing.
      */
@@ -178,11 +191,7 @@ namespace easyamqp {
     auto publish(
         const std::string &queue,
         const T &value,
-        const std::string &hostname = details::DEFAULT_HOSTNAME,
-        const int port = details::DEFAULT_PORT,
-        const std::string &username = details::DEFAULT_USERNAME,
-        const std::string &password = details::DEFAULT_PASSWORD,
-        const std::string &vhost = details::DEFAULT_VHOST) noexcept
+        const connection_info &conn_info = details::DEFAULT_CONN) noexcept
         -> rustfp::Result<rustfp::unit_t, err_t>;
 
     /**
@@ -194,11 +203,7 @@ namespace easyamqp {
      * @param consume_fn consumer function, takes in msgpack serializable value and produces any Option.
      * Returning Some(_) acknowledges the message, while None rejects and requeues the message.
      * @param consume_timeout consumer wait timeout duration.
-     * @param hostname hostname to connect for AMQP service.
-     * @param port port number to connect for AMQP service.
-     * @param username username to connect for AMQP service.
-     * @param password password to connect for AMQP service.
-     * @param vhost virtual host path to connect for AMQP service.
+     * @param conn_info structure containing fields required for AMQP connection.
      * @return Ok<_> on success,
      * while Err<consume_for_error_t> holds the variant error value.
      */
@@ -207,11 +212,7 @@ namespace easyamqp {
         const std::string &queue,
         const ConsumeFn &consume_fn,
         const std::chrono::milliseconds &consume_timeout = details::DEFAULT_DUR,
-        const std::string &hostname = details::DEFAULT_HOSTNAME,
-        const int port = details::DEFAULT_PORT,
-        const std::string &username = details::DEFAULT_USERNAME,
-        const std::string &password = details::DEFAULT_PASSWORD,
-        const std::string &vhost = details::DEFAULT_VHOST) noexcept
+        const connection_info &conn_info = details::DEFAULT_CONN) noexcept
         -> rustfp::Result<details::result_t<ConsumeFn>, consume_for_error_t>;
 
     /**
@@ -223,11 +224,7 @@ namespace easyamqp {
      * @param consume_fn consumer function, takes in msgpack serializable value and produces any Option.
      * Returning Some(_) acknowledges the message, while None rejects and requeues the message.
      * @param consume_timeout consumer wait timeout duration.
-     * @param hostname hostname to connect for AMQP service.
-     * @param port port number to connect for AMQP service.
-     * @param username username to connect for AMQP service.
-     * @param password password to connect for AMQP service.
-     * @param vhost virtual host path to connect for AMQP service.
+     * @param conn_info structure containing fields required for AMQP connection.
      * @return Ok<_> on success,
      * while Err<err_t> holds the exception error value.
      */
@@ -235,11 +232,7 @@ namespace easyamqp {
     auto consume(
         const std::string &queue,
         const ConsumeFn &consume_fn,
-        const std::string &hostname = details::DEFAULT_HOSTNAME,
-        const int port = details::DEFAULT_PORT,
-        const std::string &username = details::DEFAULT_USERNAME,
-        const std::string &password = details::DEFAULT_PASSWORD,
-        const std::string &vhost = details::DEFAULT_VHOST) noexcept
+        const connection_info &conn_info = details::DEFAULT_CONN) noexcept
         -> rustfp::Result<details::result_t<ConsumeFn>, err_t>;
 
     // implementation section
@@ -303,20 +296,21 @@ namespace easyamqp {
     subscriber::subscriber(
         const std::string &queue,
         const ConsumeAckFn &consume_ack_fn,
+        const connection_info &conn_info,
         const std::chrono::milliseconds &consume_timeout,
-        const uint32_t thread_count,
-        const std::string &hostname,
-        const int port,
-        const std::string &username,
-        const std::string &password,
-        const std::string &vhost) :
+        const uint32_t thread_count) :
 
         // to indicate to stop
         is_running(std::make_shared<std::atomic_bool>(true)),
 
         // looping thread
         t([consume_ack_fn, consume_timeout, queue, thread_count,
-            c = AmqpClient::Channel::Create(hostname, port, username, password, vhost),
+            c = AmqpClient::Channel::Create(
+                conn_info.hostname,
+                conn_info.port, 
+                conn_info.username,
+                conn_info.password,
+                conn_info.vhost),
             is_running = this->is_running] {
 
             // derive the msgpack type
@@ -393,15 +387,17 @@ namespace easyamqp {
     auto publish(
         const std::string &queue,
         const T &value,
-        const std::string &hostname,
-        const int port,
-        const std::string &username,
-        const std::string &password,
-        const std::string &vhost) noexcept
+        const connection_info &conn_info) noexcept
         -> rustfp::Result<rustfp::unit_t, err_t> {
 
         try {
-            auto c = AmqpClient::Channel::Create(hostname, port, username, password, vhost);
+            auto c = AmqpClient::Channel::Create(
+                conn_info.hostname,
+                conn_info.port,
+                conn_info.username,
+                conn_info.password,
+                conn_info.vhost);
+
             auto str_res = details::pack(value);
 
             return std::move(str_res)
@@ -421,17 +417,19 @@ namespace easyamqp {
         const std::string &queue,
         const ConsumeFn &consume_fn,
         const std::chrono::milliseconds &consume_timeout,
-        const std::string &hostname,
-        const int port,
-        const std::string &username,
-        const std::string &password,
-        const std::string &vhost) noexcept
+        const connection_info &conn_info) noexcept
         -> rustfp::Result<details::result_t<ConsumeFn>, consume_for_error_t> {
 
         using T = details::arg0_t<ConsumeFn>;
 
         try {
-            auto c = AmqpClient::Channel::Create(hostname, port, username, password, vhost);
+            auto c = AmqpClient::Channel::Create(
+                conn_info.hostname,
+                conn_info.port,
+                conn_info.username,
+                conn_info.password,
+                conn_info.vhost);
+
             c->DeclareQueue(queue, false, true, false, false);
             const auto consumer_tag = c->BasicConsume(queue, "", true, false);
 
@@ -471,22 +469,16 @@ namespace easyamqp {
     auto consume(
         const std::string &queue,
         const ConsumeFn &consume_fn,
-        const std::string &hostname,
-        const int port,
-        const std::string &username,
-        const std::string &password,
-        const std::string &vhost) noexcept
+        const connection_info &conn_info) noexcept
         -> rustfp::Result<details::result_t<ConsumeFn>, err_t> {
 
         using opt_t = details::result_t<ConsumeFn>;
         using res_t = rustfp::Result<opt_t, err_t>;
 
         auto consume_res_opt = rustfp::cycle(rustfp::Unit)
-            | rustfp::find_map([&queue, &consume_fn, &hostname, port,
-                &username, &password, &vhost](rustfp::unit_t) -> rustfp::Option<res_t> {
+            | rustfp::find_map([&queue, &consume_fn, &conn_info](rustfp::unit_t) -> rustfp::Option<res_t> {
                 
-                auto res = consume_for(queue, consume_fn, details::DEFAULT_DUR, hostname,
-                    port, username, password, vhost);
+                auto res = consume_for(queue, consume_fn, details::DEFAULT_DUR, conn_info);
 
                 return std::move(res).match(
                     [](opt_t &&v) {

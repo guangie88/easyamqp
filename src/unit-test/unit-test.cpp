@@ -17,6 +17,7 @@
 
 // easyamqp
 using easyamqp::ack;
+using easyamqp::connection_info;
 using easyamqp::consume;
 using easyamqp::consume_for;
 using easyamqp::publish;
@@ -71,6 +72,41 @@ public:
 private:
     mutable shared_ptr<pair<unique_ptr<mutex>, vector<int>>> values_ptr;
 };
+
+TEST(EasyAmqp, SubscriberConnInfoSuccess) {
+    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-conn-info-success";
+
+    // char array and string will serialize into the same thing
+    static constexpr auto TEXT_MSG = "Connection info example";
+    string outer_msg;
+
+    const connection_info my_conn_info{"127.0.0.1", 5672, "guest", "guest"};
+
+    subscriber sub(QUEUE_NAME, [&outer_msg](const string &value) {
+        outer_msg = value;
+        return ack::ack;
+    }, my_conn_info);
+
+    // publisher sleeps first
+    sleep_for(milliseconds(1000));
+    publish(QUEUE_NAME, TEXT_MSG);
+
+    // allows consumer to act
+    sleep_for(milliseconds(250));
+
+    EXPECT_EQ(TEXT_MSG, outer_msg);
+}
+
+TEST(EasyAmqp, SubscriberConnInfoFail) {
+    static constexpr auto QUEUE_NAME = "easyamqp-subscriber-conn-info-failure";
+
+    // invalid connection information
+    const connection_info my_conn_info{"doesnotexist", 12345, "nosuchusername", "nosuchpassword"};
+
+    EXPECT_ANY_THROW(subscriber sub(QUEUE_NAME, [](string) {
+        return ack::ack;
+    }, my_conn_info));
+}
 
 TEST(EasyAmqp, SubscriberText) {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-text";
