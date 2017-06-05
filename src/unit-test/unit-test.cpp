@@ -242,20 +242,25 @@ TEST(EasyAmqp, PublishConsume) {
     const auto pub_res = publish(QUEUE_NAME, 3.14);
     EXPECT_TRUE(pub_res.is_ok());
 
-    // reject acknowledgement
-    const auto con_res1 = consume(QUEUE_NAME,
-        [](const double value) -> Option<string> { return None; });
-
-    EXPECT_TRUE(con_res1.is_ok());
-    EXPECT_TRUE(con_res1.get_unchecked().is_none());
+    // reject acknowledgement then accept
+    // note that rejected message will continue to block the consume
+    auto will_ack = false;
 
     // accept acknowledgement
-    const auto con_res2 = consume(QUEUE_NAME,
-        [](const double value) { return Some(value); });
+    const auto con_res = consume(QUEUE_NAME,
+        [&will_ack](const double value) -> Option<double> {
+            if (will_ack) {
+                will_ack = false;
+                return Some(value);
+            }
+            else {
+                will_ack = true;
+                return None;
+            }
+        });
 
-    EXPECT_TRUE(con_res2.is_ok());
-    EXPECT_TRUE(con_res2.get_unchecked().is_some());
-    EXPECT_EQ(3.14, con_res2.get_unchecked().get_unchecked());
+    EXPECT_TRUE(con_res.is_ok());
+    EXPECT_EQ(3.14, con_res.get_unchecked());
 
     // confirm the queue is empty
     const auto con_for_res = consume_for(QUEUE_NAME,

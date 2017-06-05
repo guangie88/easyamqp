@@ -51,11 +51,13 @@ namespace easyamqp {
         /** To get the first argument type of a non-overloaded function. */
         template <class Fn>
         using arg0_t = std::remove_cv_t<std::remove_reference_t<
-            typename misc::fn_traits<std::remove_cv_t<std::remove_reference_t<Fn>>>::template arg_t<0>>>;
+            typename misc::fn_traits<
+                std::remove_cv_t<std::remove_reference_t<Fn>>>::template arg_t<0>>>;
 
         /** To get the result type of a non-overloaded function. */
         template <class Fn>
-        using result_t = typename misc::fn_traits<std::remove_cv_t<std::remove_reference_t<Fn>>>::return_t;
+        using result_t = typename misc::fn_traits<
+            std::remove_cv_t<std::remove_reference_t<Fn>>>::return_t;
     }
 
     /**
@@ -200,7 +202,8 @@ namespace easyamqp {
      * The created queue will be durable, non-exclusive and does not
      * get auto-deleted.
      * @param queue queue name to create
-     * @param consume_fn consumer function, takes in msgpack serializable value and produces any Option.
+     * @param consume_fn consumer function, takes in msgpack serializable value
+     * and produces any Option.
      * Returning Some(_) acknowledges the message, while None rejects and requeues the message.
      * @param consume_timeout consumer wait timeout duration.
      * @param conn_info structure containing fields required for AMQP connection.
@@ -213,7 +216,7 @@ namespace easyamqp {
         const ConsumeFn &consume_fn,
         const std::chrono::milliseconds &consume_timeout = details::DEFAULT_DUR,
         const connection_info &conn_info = details::DEFAULT_CONN) noexcept
-        -> rustfp::Result<details::result_t<ConsumeFn>, consume_for_error_t>;
+        -> rustfp::Result<typename details::result_t<ConsumeFn>::some_t, consume_for_error_t>;
 
     /**
      * Consumes any given message in the queue, waiting until the message arrives.
@@ -221,7 +224,8 @@ namespace easyamqp {
      * The created queue will be durable, non-exclusive and does not
      * get auto-deleted.
      * @param queue queue name to create
-     * @param consume_fn consumer function, takes in msgpack serializable value and produces any Option.
+     * @param consume_fn consumer function, takes in msgpack serializable value
+     * and produces any Option.
      * Returning Some(_) acknowledges the message, while None rejects and requeues the message.
      * @param consume_timeout consumer wait timeout duration.
      * @param conn_info structure containing fields required for AMQP connection.
@@ -233,7 +237,7 @@ namespace easyamqp {
         const std::string &queue,
         const ConsumeFn &consume_fn,
         const connection_info &conn_info = details::DEFAULT_CONN) noexcept
-        -> rustfp::Result<details::result_t<ConsumeFn>, err_t>;
+        -> rustfp::Result<typename details::result_t<ConsumeFn>::some_t, err_t>;
 
     // implementation section
 
@@ -245,7 +249,9 @@ namespace easyamqp {
         }
 
         template <class T>
-        auto pack(const T &value) noexcept -> rustfp::Result<std::string, std::unique_ptr<std::exception>> {
+        auto pack(const T &value) noexcept
+            -> rustfp::Result<std::string, std::unique_ptr<std::exception>> {
+
             try {
                 std::stringstream buf;
                 msgpack::pack(buf, value);
@@ -257,7 +263,9 @@ namespace easyamqp {
         }
 
         template <class T>
-        auto unpack(const std::string &str) noexcept -> rustfp::Result<T, std::unique_ptr<std::exception>> {
+        auto unpack(const std::string &str) noexcept
+            -> rustfp::Result<T, std::unique_ptr<std::exception>> {
+
             static_assert(std::is_default_constructible<T>::value,
                 "unpack<T> must have T that is default constructible!");
 
@@ -337,7 +345,10 @@ namespace easyamqp {
                     pool.push([c, consume_ack_fn, env](const int id) {
                         // wraps a try-catch block to play safe when calling external function
                         const auto ack_res =
-                            [&consume_ack_fn, &env]() -> rustfp::Result<easyamqp::ack, std::unique_ptr<std::exception>> {
+                            [&consume_ack_fn, &env]()
+                                -> rustfp::Result<
+                                    easyamqp::ack, std::unique_ptr<std::exception>> {
+
                                 try {
                                     auto value_res = details::unpack<T>(env->Message()->Body());
 
@@ -418,9 +429,11 @@ namespace easyamqp {
         const ConsumeFn &consume_fn,
         const std::chrono::milliseconds &consume_timeout,
         const connection_info &conn_info) noexcept
-        -> rustfp::Result<details::result_t<ConsumeFn>, consume_for_error_t> {
+        -> rustfp::Result<typename details::result_t<ConsumeFn>::some_t, consume_for_error_t> {
 
         using T = details::arg0_t<ConsumeFn>;
+        using some_t = typename details::result_t<ConsumeFn>::some_t;
+        using ret_t = rustfp::Result<some_t, consume_for_error_t>;
 
         try {
             auto c = AmqpClient::Channel::Create(
@@ -435,30 +448,48 @@ namespace easyamqp {
 
             AmqpClient::Envelope::ptr_t env = nullptr;
             const auto timeout_ms = details::convert_timeout(consume_timeout); 
-            const auto has_msg = c->BasicConsumeMessage(consumer_tag, env, timeout_ms);
 
-            if (has_msg) {
-                auto value_res = details::unpack<T>(env->Message()->Body());
+            auto consume_res_opt = rustfp::cycle(rustfp::Unit)
+                | rustfp::find_map([
+                    &c, &consume_fn, &consumer_tag, &env, &timeout_ms](rustfp::unit_t) {
 
-                return std::move(value_res)
-                    .map([&c, &consume_fn, &env](T &&value) {
-                        auto consume_opt = consume_fn(std::move(value));
+                    const auto has_msg = c->BasicConsumeMessage(consumer_tag, env, timeout_ms);
 
-                        if (consume_opt.is_some()) {
-                            c->BasicAck(env);
-                        }
-                        else {
-                            c->BasicReject(env, true);
-                        }
+                    if (has_msg) {
+                        auto value_res = details::unpack<T>(env->Message()->Body());
 
-                        return std::move(consume_opt);
-                    })
-                    .map_err([](err_t &&e) {
-                        return consume_for_error_t{std::move(e)};
-                    });
-            } else {
-                return rustfp::Err(consume_for_error_t{timeout_t{}});
-            }
+                        auto res = std::move(value_res).match(
+                            [&c, &consume_fn, &env](T &&value) -> rustfp::Option<ret_t> {
+                                auto consume_opt = consume_fn(std::move(value));
+
+                                if (consume_opt.is_some()) {
+                                    c->BasicAck(env);
+
+                                    return rustfp::Some(
+                                        ret_t(rustfp::Ok(
+                                            std::move(consume_opt).unwrap_unchecked())));
+                                }
+                                else {
+                                    c->BasicReject(env, true);
+                                    return rustfp::None;
+                                }
+                            },
+                            [](err_t &&e) {
+                                return rustfp::Some(
+                                    ret_t(rustfp::Err(consume_for_error_t{std::move(e)})));
+                            });
+
+                        return std::move(res);
+                    } else {
+                        return rustfp::Some(
+                            ret_t(rustfp::Err(consume_for_error_t{timeout_t{}})));
+                    }
+                });
+
+            // since it is a cycle + find_map, it is guaranteed to find Some
+            assert(consume_res_opt.is_some());
+
+            return std::move(consume_res_opt).unwrap_unchecked();
         }
         catch (const std::exception &e) {
             return rustfp::Err(consume_for_error_t(std::make_unique<std::exception>(e)));
@@ -470,29 +501,33 @@ namespace easyamqp {
         const std::string &queue,
         const ConsumeFn &consume_fn,
         const connection_info &conn_info) noexcept
-        -> rustfp::Result<details::result_t<ConsumeFn>, err_t> {
+        -> rustfp::Result<typename details::result_t<ConsumeFn>::some_t, err_t> {
 
         using opt_t = details::result_t<ConsumeFn>;
-        using res_t = rustfp::Result<opt_t, err_t>;
+        using some_t = typename opt_t::some_t;
+        using ret_t = rustfp::Result<some_t, err_t>;
 
         auto consume_res_opt = rustfp::cycle(rustfp::Unit)
-            | rustfp::find_map([&queue, &consume_fn, &conn_info](rustfp::unit_t) -> rustfp::Option<res_t> {
+            | rustfp::find_map([&queue, &consume_fn, &conn_info](rustfp::unit_t)
+                -> rustfp::Option<ret_t> {
                 
                 auto res = consume_for(queue, consume_fn, details::DEFAULT_DUR, conn_info);
 
-                return std::move(res).match(
-                    [](opt_t &&v) {
-                        return rustfp::Some(res_t(rustfp::Ok(std::move(v))));
+                auto opt_res = std::move(res).match(
+                    [](some_t &&v) {
+                        return rustfp::Some(ret_t(rustfp::Ok(std::move(v))));
                     },
 
-                    [](consume_for_error_t &&e) -> rustfp::Option<res_t> {
+                    [](consume_for_error_t &&e) -> rustfp::Option<ret_t> {
                         if (e.is_timeout()) {
                             return rustfp::None;
                         }
                         else {
-                            return rustfp::Some(res_t(rustfp::Err(e.get_err_unchecked())));
+                            return rustfp::Some(ret_t(rustfp::Err(e.get_err_unchecked())));
                         }
                     });
+
+                return std::move(opt_res);
             });
 
         // since it is a cycle + find_map, it is guaranteed to find Some
