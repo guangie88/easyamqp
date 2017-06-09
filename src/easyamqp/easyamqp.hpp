@@ -64,20 +64,43 @@ namespace easyamqp {
      * Groups all the fields required for connection into a structure.
      */
     struct connection_info {
+        /**
+         * Constructor to initialize all the fields.
+         * @param hostname AMQP server hostname.
+         * @param port AMQP server port.
+         * @param username username for connection login.
+         * @param password password for connection login.
+         * @param vhost virtual host of the AMQP exchange.
+         */
+        connection_info(
+            const std::string &hostname = details::DEFAULT_HOSTNAME,
+            const int port = details::DEFAULT_PORT,
+            const std::string &username = details::DEFAULT_USERNAME, 
+            const std::string &password = details::DEFAULT_PASSWORD,
+            const std::string &vhost = details::DEFAULT_VHOST) :
+
+            hostname(hostname),
+            port(port),
+            username(username),
+            password(password),
+            vhost(vhost) {
+
+        }
+
         /** Hostname of the AMQP server. */
-        std::string hostname = details::DEFAULT_HOSTNAME;
+        std::string hostname;
 
         /** Port number of the AMQP server. */
-        int port = details::DEFAULT_PORT;
+        int port;
 
         /** Username for connection login. */
-        std::string username = details::DEFAULT_USERNAME;
+        std::string username;
 
         /** Password for connection login. */
-        std::string password = details::DEFAULT_PASSWORD;
+        std::string password;
 
         /** Virtual host of the AMQP exchange. */
-        std::string vhost = details::DEFAULT_VHOST;
+        std::string vhost;
     };
     
     namespace details {
