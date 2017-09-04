@@ -7,26 +7,11 @@ else()
   set(CMAKE_CXX_COMPILER g++ CACHE STRING "Compiler to use")
 endif()
 
-include(CMakeToolsHelpers OPTIONAL)
-
 # project variables
-project(rustfp)
-set(BIN_DIRS unit_test)
+project(easyamqp)
+set(BIN_DIRS unit-test)
 set(USE_STATIC OFF CACHE BOOL "Uses only external static libraries for linking")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Builds all non-executable source directories as shared libraries")
-
-# deps paths
-# overrides external dependencies
-include_directories(
-    deps/msgpack-c/include
-    deps/rustfp/deps/Optional
-    deps/rustfp/src
-    deps/SimpleAmqpClient/src
-    deps/variant/include
-    deps/Catch/include)
-
-add_subdirectory(deps/SimpleAmqpClient)
-set(SIMPLE_AMQP_CLIENT_LIB debug SimpleAmqpClient optimized SimpleAmqpClient)
 
 # libraries finding
 if(${USE_STATIC})
@@ -40,8 +25,25 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
+find_library(SIMPLE_AMQP_CLIENT_LIB_DEBUG NAMES SimpleAmqpClient REQUIRED)
+find_library(SIMPLE_AMQP_CLIENT_LIB_RELEASE NAMES SimpleAmqpClient REQUIRED)
+find_library(BOOST_CHRONO_LIB_DEBUG NAMES boost_filesystem REQUIRED)
+find_library(BOOST_CHRONO_LIB_RELEASE NAMES boost_filesystem REQUIRED)
+find_library(BOOST_SYSTEM_LIB_DEBUG NAMES boost_system REQUIRED)
+find_library(BOOST_SYSTEM_LIB_RELEASE NAMES boost_system REQUIRED)
+find_library(GTEST_LIB_DEBUG NAMES gtest REQUIRED)
+find_library(GTEST_LIB_RELEASE NAMES gtest REQUIRED)
+
+set(SIMPLE_AMQP_CLIENT_LIB debug ${SIMPLE_AMQP_CLIENT_LIB_DEBUG} optimized ${SIMPLE_AMQP_CLIENT_LIB_RELEASE})
+set(BOOST_CHRONO_LIB debug ${BOOST_CHRONO_LIB_DEBUG} optimized ${BOOST_CHRONO_LIB_RELEASE})
+set(BOOST_SYSTEM_LIB debug ${BOOST_SYSTEM_LIB_DEBUG} optimized ${BOOST_SYSTEM_LIB_RELEASE})
+set(GTEST_LIB debug ${GTEST_LIB_DEBUG} optimized ${GTEST_LIB_RELEASE})
+
+# project to libraries mapping
+set(PROJ_LIBS_unit-test SIMPLE_AMQP_CLIENT_LIB BOOST_CHRONO_LIB BOOST_SYSTEM_LIB GTEST_LIB)
+
 # project to locally built libraries mapping
-set(PROJ_LIBS_unit_test SIMPLE_AMQP_CLIENT_LIB)
+# set(LOCAL_PROJ_LIBS_unit-test easyamqp)
 
 # general fixed project variables
 set(SRC_ROOT_DIR src)
@@ -53,7 +55,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 if(MSVC)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /Wall")
 else()
-  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -coverage")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall")
 endif()
 
 # performs static/shared libraries global settings
@@ -98,6 +100,6 @@ foreach(SRC_DIR ${SRC_DIRS})
     endif()
 
     target_include_directories(${PROJ_NAME} PUBLIC ${CMAKE_SOURCE_DIR}/${SRC_ROOT_DIR})
-    target_link_libraries(${PROJ_NAME} ${LOCAL_PROJ_LIBS_${PROJ_NAME}} ${SUBST_PROJ_LIBS} ${GTEST_LIB} Threads::Threads)
+    target_link_libraries(${PROJ_NAME} ${LOCAL_PROJ_LIBS_${PROJ_NAME}} ${SUBST_PROJ_LIBS} Threads::Threads)
   endif()
 endforeach()

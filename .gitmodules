@@ -1,0 +1,15 @@
+[submodule "deps/SimpleAmqpClient"]
+	path = deps/SimpleAmqpClient
+	url = https://github.com/alanxz/SimpleAmqpClient.git
+[submodule "deps/variant"]
+	path = deps/variant
+	url = https://github.com/mapbox/variant.git
+[submodule "deps/Catch"]
+	path = deps/Catch
+	url = https://github.com/philsquared/Catch.git
+[submodule "deps/msgpack-c"]
+	path = deps/msgpack-c
+	url = https://github.com/msgpack/msgpack-c.git
+[submodule "deps/rustfp"]
+	path = deps/rustfp
+	url = https://github.com/guangie88/rustfp.git

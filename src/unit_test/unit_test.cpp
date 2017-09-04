@@ -1,6 +1,7 @@
-#include "gtest/gtest.h"
-
 #include "easyamqp/easyamqp.hpp"
+
+#define CATCH_CONFIG_MAIN
+#include "catch.hpp"
 
 #include "rustfp/option.h"
 
@@ -73,7 +74,7 @@ private:
     mutable shared_ptr<pair<unique_ptr<mutex>, vector<int>>> values_ptr;
 };
 
-TEST(EasyAmqp, SubscriberConnInfoSuccess) {
+SCENARIO("SubscriberConnInfoSuccess", "[EasyAmqp]") {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-conn-info-success";
 
     // char array and string will serialize into the same thing
@@ -94,21 +95,23 @@ TEST(EasyAmqp, SubscriberConnInfoSuccess) {
     // allows consumer to act
     sleep_for(milliseconds(250));
 
-    EXPECT_EQ(TEXT_MSG, outer_msg);
+    REQUIRE(TEXT_MSG == outer_msg);
 }
 
-TEST(EasyAmqp, SubscriberConnInfoFail) {
+SCENARIO("SubscriberConnInfoFail", "[EasyAmqp]") {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-conn-info-failure";
 
     // invalid connection information
     const connection_info my_conn_info{"doesnotexist", 12345, "nosuchusername", "nosuchpassword"};
 
-    EXPECT_ANY_THROW(subscriber sub(QUEUE_NAME, [](string) {
-        return ack::ack;
-    }, my_conn_info));
+    REQUIRE_THROWS([&my_conn_info] {
+        subscriber sub(QUEUE_NAME, [](string) {
+            return ack::ack;
+        }, my_conn_info);
+    }());
 }
 
-TEST(EasyAmqp, SubscriberText) {
+SCENARIO("SubscriberText", "[EasyAmqp]") {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-text";
 
     // char array and string will serialize into the same thing
@@ -127,10 +130,10 @@ TEST(EasyAmqp, SubscriberText) {
     // allows consumer to act
     sleep_for(milliseconds(250));
 
-    EXPECT_EQ(TEXT_MSG, outer_msg);
+    REQUIRE(TEXT_MSG == outer_msg);
 }
 
-TEST(EasyAmqp, SubscriberComplexMsgpack) {
+SCENARIO("SubscriberComplexMsgpack", "[EasyAmqp]") {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-complex-msgpack";
 
     static const unordered_map<int, string> NUMBERS {
@@ -151,12 +154,12 @@ TEST(EasyAmqp, SubscriberComplexMsgpack) {
     // allows consumer to act
     sleep_for(milliseconds(250));
 
-    EXPECT_EQ("SEVEN", outer_numbers[7]);
-    EXPECT_EQ("ZERO", outer_numbers[0]);
-    EXPECT_EQ("THREE", outer_numbers[3]);
+    REQUIRE("SEVEN" == outer_numbers[7]);
+    REQUIRE("ZERO" == outer_numbers[0]);
+    REQUIRE("THREE" == outer_numbers[3]);
 }
 
-TEST(EasyAmqp, SubscriberFunctor) {
+SCENARIO("SubscriberFunctor", "[EasyAmqp]") {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-functor";
     static const vector<int> NUMBERS {1, 3, 5, 7};
     
@@ -167,20 +170,20 @@ TEST(EasyAmqp, SubscriberFunctor) {
     }
 
     auto f = foo{NUMBERS.cbegin(), NUMBERS.cend()};
-    EXPECT_EQ(4, f.get().size());
+    REQUIRE(4 == f.get().size());
     
     subscriber sub(QUEUE_NAME, f);
     publish(QUEUE_NAME, NUMBERS);
 
     sleep_for(milliseconds(250));
-    EXPECT_EQ(8, f.get().size());
+    REQUIRE(8 == f.get().size());
 }
 
-TEST(EasyAmqp, SubscriberNack) {
+SCENARIO("SubscriberNack", "[EasyAmqp]") {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-nack";
     size_t count = 0;
 
-    subscriber sub(QUEUE_NAME, [&count](const string &value) {
+    subscriber sub(QUEUE_NAME, [&count](const string &) {
         ++count;
 
         return count == 5
@@ -195,16 +198,16 @@ TEST(EasyAmqp, SubscriberNack) {
     // this works on the fact that the nack loop re-runs immediately until count is 5
     sleep_for(milliseconds(250));
 
-    EXPECT_EQ(5, count);
+    REQUIRE(5 == count);
 }
 
-TEST(EasyAmqp, SubscriberMsgpackFail) {
+SCENARIO("SubscriberMsgpackFail", "[EasyAmqp]") {
     static constexpr auto QUEUE_NAME = "easyamqp-subscriber-msgpack-fail";
     size_t count = 0;
 
     // failing unpacking on the same queue name
     // will sliently drop the messages
-    subscriber sub_fail(QUEUE_NAME, [&count](const string &value) {
+    subscriber sub_fail(QUEUE_NAME, [&count](const string &) {
         ++count;
         return ack::ack;
     });
@@ -225,22 +228,22 @@ TEST(EasyAmqp, SubscriberMsgpackFail) {
 
     sleep_for(milliseconds(250));
 
-    EXPECT_EQ(2, count);
+    REQUIRE(2 == count);
 }
 
-TEST(EasyAmqp, ConsumeForFail) {
+SCENARIO("ConsumeForFail", "[EasyAmqp]") {
     const auto res = consume_for("easyamqp-consume-for-fail",
         [](string &&value) { return Some(move(value)); });
 
-    EXPECT_TRUE(res.is_err());
-    EXPECT_TRUE(res.get_err_unchecked().is_timeout());
+    REQUIRE(res.is_err());
+    REQUIRE(res.get_err_unchecked().is_timeout());
 }
 
-TEST(EasyAmqp, PublishConsume) {
+SCENARIO("PublishConsume", "[EasyAmqp]") {
     static constexpr auto QUEUE_NAME = "easyamqp-publish-consume";
 
     const auto pub_res = publish(QUEUE_NAME, 3.14);
-    EXPECT_TRUE(pub_res.is_ok());
+    REQUIRE(pub_res.is_ok());
 
     // reject acknowledgement then accept
     // note that rejected message will continue to block the consume
@@ -259,18 +262,13 @@ TEST(EasyAmqp, PublishConsume) {
             }
         });
 
-    EXPECT_TRUE(con_res.is_ok());
-    EXPECT_EQ(3.14, con_res.get_unchecked());
+    REQUIRE(con_res.is_ok());
+    REQUIRE(3.14 == con_res.get_unchecked());
 
     // confirm the queue is empty
     const auto con_for_res = consume_for(QUEUE_NAME,
         [](const double value) { return Some(value); });
 
-    EXPECT_TRUE(con_for_res.is_err());
-    EXPECT_TRUE(con_for_res.get_err_unchecked().is_timeout());
-}
-
-int main(int argc, char * argv[]) {
-    testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    REQUIRE(con_for_res.is_err());
+    REQUIRE(con_for_res.get_err_unchecked().is_timeout());
 }

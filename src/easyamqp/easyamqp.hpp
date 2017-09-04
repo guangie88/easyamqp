@@ -17,6 +17,7 @@
 
 #include "rustfp/cycle.h"
 #include "rustfp/find_map.h"
+#include "rustfp/once.h"
 #include "rustfp/result.h"
 #include "rustfp/unit.h"
 
@@ -365,7 +366,7 @@ namespace easyamqp {
 
                 // no message => timeout
                 if (has_msg && is_running->load()) {
-                    pool.push([c, consume_ack_fn, env](const int id) {
+                    pool.push([c, consume_ack_fn, env](const int) {
                         // wraps a try-catch block to play safe when calling external function
                         const auto ack_res =
                             [&consume_ack_fn, &env]()
@@ -399,7 +400,7 @@ namespace easyamqp {
                                 }
                             },
 
-                            [&c, &env](const auto &e) {
+                            [&c, &env](const auto &) {
                                 c->BasicReject(env, true);
                             });
                     });
@@ -472,7 +473,8 @@ namespace easyamqp {
             AmqpClient::Envelope::ptr_t env = nullptr;
             const auto timeout_ms = details::convert_timeout(consume_timeout); 
 
-            auto consume_res_opt = rustfp::cycle(rustfp::Unit)
+            auto consume_res_opt = rustfp::once(rustfp::Unit)
+                | rustfp::cycle()
                 | rustfp::find_map([
                     &c, &consume_fn, &consumer_tag, &env, &timeout_ms](rustfp::unit_t) {
 
@@ -530,7 +532,8 @@ namespace easyamqp {
         using some_t = typename opt_t::some_t;
         using ret_t = rustfp::Result<some_t, err_t>;
 
-        auto consume_res_opt = rustfp::cycle(rustfp::Unit)
+        auto consume_res_opt = rustfp::once(rustfp::Unit)
+            | rustfp::cycle()
             | rustfp::find_map([&queue, &consume_fn, &conn_info](rustfp::unit_t)
                 -> rustfp::Option<ret_t> {
                 
