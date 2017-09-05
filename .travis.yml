@@ -7,16 +7,17 @@ addons:
     sources:
       - ubuntu-toolchain-r-test
     packages:
+      - gcc-6
       - g++-6
       - cmake3
-      - python
       - doxygen
       - librabbitmq-dev
       - libboost-all-dev
 
 script:
+- update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-6 100
+- update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-6 100
 - git submodule update --init --recursive
-- CXX=/usr/bin/g++-6 CC=/usr/bin/gcc-6
 - mkdir build-debug
 - cd build-debug
 - cmake .. -DCMAKE_BUILD_TYPE=Debug
