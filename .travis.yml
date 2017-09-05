@@ -15,8 +15,7 @@ addons:
       - libboost-all-dev
 
 script:
-- export CC=/usr/bin/gcc-6
-- export CXX=/usr/bin/g++-6
+- export CC=/usr/bin/gcc-6 CXX=/usr/bin/g++-6
 - git submodule update --init --recursive
 - mkdir build-debug
 - cd build-debug

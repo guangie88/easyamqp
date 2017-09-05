@@ -1,16 +1,10 @@
 cmake_minimum_required(VERSION 3.3)
 
-if(MSVC)
-  set(CMAKE_CXX_COMPILER cl)
-else()
-  set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standards to use (11|14)")
-  set(CMAKE_CXX_COMPILER g++ CACHE STRING "Compiler to use")
-endif()
-
+set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++ standards to use (11|14)")
 include(CMakeToolsHelpers OPTIONAL)
 
 # project variables
-project(rustfp)
+project(easyamqp)
 set(BIN_DIRS unit_test)
 set(USE_STATIC OFF CACHE BOOL "Uses only external static libraries for linking")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Builds all non-executable source directories as shared libraries")
