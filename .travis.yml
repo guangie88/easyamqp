@@ -7,24 +7,37 @@ addons:
     sources:
       - ubuntu-toolchain-r-test
     packages:
-      - gcc-6
-      - g++-6
+      - gcc-5
+      - g++-5
       - cmake3
       - doxygen
-      - librabbitmq-dev
+      - rabbitmq-server
+      - openssl
+      - libssl-dev
       - libboost-all-dev
 
 script:
-- export CC=/usr/bin/gcc-6 CXX=/usr/bin/g++-6
-- git submodule update --init --recursive
+- export CC=/usr/bin/gcc-5 CXX=/usr/bin/g++-5
+
+# build rabbitmq-c first
+- git clone --recursive https://github.com/alanxz/rabbitmq-c.git
+- cd rabbitmq-c
+- mkdir build-release
+- cd build-release
+- cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/install -DCMAKE_BUILD_TYPE=Release
+- cmake --build . -- -j2
+- make install
+- cd ../..
+
+# build the main solution
 - mkdir build-debug
 - cd build-debug
-- cmake .. -DCMAKE_BUILD_TYPE=Debug
+- cmake .. -DCMAKE_BUILD_TYPE=Debug -DRabbitmqc_INCLUDE_DIR=$HOME/install/include -DRabbitmqc_LIBRARY=$HOME/install/lib/x86_64-linux-gnu/librabbitmq.so
 - cmake --build . -- -j2
 - cd ..
 - mkdir build-release
 - cd build-release
-- cmake .. -DCMAKE_BUILD_TYPE=Release
+- cmake .. -DCMAKE_BUILD_TYPE=Release -DRabbitmqc_INCLUDE_DIR=$HOME/install/include -DRabbitmqc_LIBRARY=$HOME/install/lib/x86_64-linux-gnu/librabbitmq.so
 - cmake --build . -- -j2
 - cd ..
 
@@ -32,7 +45,7 @@ after_success:
 - doxygen Doxyfile
 
 # run unit test and code coverage
-- ./build-debug/bin/unit_test
+- ./build-debug/bin/unit_test -s
 - gcov ./build-debug/CMakeFiles/unit_test.dir/src/unit_test/unit_test.cpp.gcno
 - bash <(curl -s https://codecov.io/bash)
 

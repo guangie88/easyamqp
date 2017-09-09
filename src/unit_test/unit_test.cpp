@@ -17,11 +17,11 @@
 #include <vector>
 
 // easyamqp
-using easyamqp::ack;
 using easyamqp::connection_info;
 using easyamqp::consume;
 using easyamqp::consume_for;
 using easyamqp::publish;
+using easyamqp::response;
 using easyamqp::subscriber;
 
 // rustfp
@@ -54,7 +54,7 @@ public:
     }
 
     // must be const and have to use mutable with Arc + Mutex
-    auto operator()(const vector<int> &values) const -> ack {
+    auto operator()(const vector<int> &values) const -> response {
         lock_guard<mutex> lock(*values_ptr->first);
         auto &this_values = values_ptr->second;
 
@@ -63,7 +63,7 @@ public:
             values.cbegin(),
             values.cend());
 
-        return ack::ack;
+        return response::ack;
     }
 
     auto get() const -> vector<int> {
@@ -85,7 +85,7 @@ SCENARIO("SubscriberConnInfoSuccess", "[EasyAmqp]") {
 
     subscriber sub(QUEUE_NAME, [&outer_msg](const string &value) {
         outer_msg = value;
-        return ack::ack;
+        return response::ack;
     }, my_conn_info);
 
     // publisher sleeps first
@@ -106,7 +106,7 @@ SCENARIO("SubscriberConnInfoFail", "[EasyAmqp]") {
 
     REQUIRE_THROWS([&my_conn_info] {
         subscriber sub(QUEUE_NAME, [](string) {
-            return ack::ack;
+            return response::ack;
         }, my_conn_info);
     }());
 }
@@ -120,7 +120,7 @@ SCENARIO("SubscriberText", "[EasyAmqp]") {
 
     subscriber sub(QUEUE_NAME, [&outer_msg](const string &value) {
         outer_msg = value;
-        return ack::ack;
+        return response::ack;
     });
 
     // publisher sleeps first
@@ -144,7 +144,7 @@ SCENARIO("SubscriberComplexMsgpack", "[EasyAmqp]") {
 
     subscriber sub(QUEUE_NAME, [&outer_numbers](const unordered_map<int, string> &value) {
         outer_numbers = value;
-        return ack::ack;
+        return response::ack;
     });
 
     // publisher sleeps first
@@ -187,8 +187,8 @@ SCENARIO("SubscriberNack", "[EasyAmqp]") {
         ++count;
 
         return count == 5
-            ? ack::ack
-            : ack::rej;
+            ? response::ack
+            : response::rej;
     });
 
     // publisher
@@ -209,7 +209,7 @@ SCENARIO("SubscriberMsgpackFail", "[EasyAmqp]") {
     // will sliently drop the messages
     subscriber sub_fail(QUEUE_NAME, [&count](const string &) {
         ++count;
-        return ack::ack;
+        return response::ack;
     });
 
     // fail

@@ -110,7 +110,7 @@ namespace easyamqp {
     }
 
     /** Acknowledgement enumeration. */
-    enum class ack {
+    enum class response {
         /** Acknowledge the message. */
         ack,
 
@@ -175,7 +175,7 @@ namespace easyamqp {
          * get auto-deleted.
          * @param queue queue name to create
          * @param consume_ack_fn consumer function that handles the deserialized value
-         * when available in queue, and returns ack.
+         * when available in queue, and returns response.
          * @param conn_info structure containing fields required for AMQP connection.
          * @param consume_timeout consume wait timeout duration before
          * performing another blocking wait.
@@ -368,10 +368,10 @@ namespace easyamqp {
                 if (has_msg && is_running->load()) {
                     pool.push([c, consume_ack_fn, env](const int) {
                         // wraps a try-catch block to play safe when calling external function
-                        const auto ack_res =
+                        const auto rsp_res =
                             [&consume_ack_fn, &env]()
                                 -> rustfp::Result<
-                                    easyamqp::ack, std::unique_ptr<std::exception>> {
+                                    easyamqp::response, std::unique_ptr<std::exception>> {
 
                                 try {
                                     auto value_res = details::unpack<T>(env->Message()->Body());
@@ -382,7 +382,7 @@ namespace easyamqp {
                                         },
                                         [](const auto &) {
                                             // failed unpacking, auto acknowledge
-                                            return rustfp::Ok(ack::ack);
+                                            return rustfp::Ok(response::ack);
                                         });
                                 }
                                 catch (const std::exception &e){
@@ -390,9 +390,9 @@ namespace easyamqp {
                                 }
                             }();
 
-                        ack_res.match(
-                            [&c, &env](const auto &ack) {
-                                if (ack == ack::ack) {
+                        rsp_res.match(
+                            [&c, &env](const auto &rsp) {
+                                if (rsp == response::ack) {
                                     c->BasicAck(env);
                                 }
                                 else {

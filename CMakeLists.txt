@@ -8,6 +8,7 @@ project(easyamqp)
 set(BIN_DIRS unit_test)
 set(USE_STATIC OFF CACHE BOOL "Uses only external static libraries for linking")
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Builds all non-executable source directories as shared libraries")
+SET(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/Modules)
 
 # deps paths
 # overrides external dependencies
@@ -18,6 +19,10 @@ include_directories(
     deps/SimpleAmqpClient/src
     deps/variant/include
     deps/Catch/include)
+
+# requires other CMake library files
+include_directories(SYSTEM ${Rabbitmqc_INCLUDE_DIRS})
+set(RABBITMQ_C_LIB debug ${Rabbitmqc_LIBRARY} optimized ${Rabbitmqc_LIBRARY})
 
 add_subdirectory(deps/SimpleAmqpClient)
 set(SIMPLE_AMQP_CLIENT_LIB debug SimpleAmqpClient optimized SimpleAmqpClient)
@@ -35,7 +40,7 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
 # project to locally built libraries mapping
-set(PROJ_LIBS_unit_test SIMPLE_AMQP_CLIENT_LIB)
+set(PROJ_LIBS_unit_test RABBITMQ_C_LIB SIMPLE_AMQP_CLIENT_LIB)
 
 # general fixed project variables
 set(SRC_ROOT_DIR src)
